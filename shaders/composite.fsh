@@ -37,11 +37,6 @@ const vec3 ambientColor = vec3(0.1);
 const float shadowDistanceRenderMul = 1.0;
 
 
-vec3 projectAndDivide(mat4 projectionMatrix, vec3 position){
-  vec4 homPos = projectionMatrix * vec4(position, 1.0);
-  return homPos.xyz / homPos.w;
-}
-
 vec3 getShadow(vec3 shadowScreenPos){
   float transparentShadow = step(shadowScreenPos.z, texture(shadowtex0, shadowScreenPos.xy).r); // sample the shadow map containing everything
 
@@ -141,4 +136,5 @@ void main() {
 	vec3 sunlight = sunlightColor * clamp(dot(worldLightVector, normal), 0.0, 1.0) * shadow;
 
 	color.rgb *= blocklight + skylight + ambient + sunlight;
+
 }
