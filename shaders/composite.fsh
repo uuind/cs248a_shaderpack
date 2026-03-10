@@ -14,10 +14,12 @@ uniform sampler2D shadowcolor0;
 
 uniform sampler2D noisetex;
 
-uniform vec3 shadowLightPosition;
+uniform vec3 sunPosition;
+uniform vec3 moonPosition;
+uniform float sunAngle;
+uniform int worldTime;
 
-uniform mat4 gbufferModelViewInverse;
-uniform mat4 gbufferProjectionInverse;
+
 uniform mat4 shadowModelView;
 uniform mat4 shadowProjection;
 
@@ -29,9 +31,11 @@ in vec2 texcoord;
 /* RENDERTARGETS: 0 */
 layout(location = 0) out vec4 color;
 
-const vec3 blocklightColor = vec3(1.0, 0.5, 0.08);
-const vec3 skylightColor = vec3(0.05, 0.15, 0.3);
+const vec3 blocklightColor = vec3(1.0, 0.5, 0.125);
+const vec3 skylightColor = vec3(1.0);
 const vec3 sunlightColor = vec3(1.0);
+const vec3 sunlightScatterColor = vec3(1.0, 0.4, 0.1);
+const vec3 moonlightColor = vec3(1.0);
 const vec3 ambientColor = vec3(0.1);
 
 const float shadowDistanceRenderMul = 1.0;
@@ -106,6 +110,36 @@ vec3 getSoftShadow(vec4 shadowClipPos){
   return shadowAccum / float(samples); // divide sum by count, getting average shadow
 }
 
+float getLightContribution(vec3 lightDir) {
+    // lightDir is the normalized vector of the sun or moon in Player Space
+    // The 'y' component is the height above the horizon (-1.0 to 1.0)
+    
+    float height = lightDir.y;
+    
+    // Smoothly transition as it nears the horizon
+    // Using smoothstep prevents a sharp "pop" when the sun hits 0.0
+    return smoothstep(0, 0.1, height);
+}
+
+vec3 getCelestialLight(vec3 normal, vec3 shadow) {
+  vec3 sunVec = normalize(sunPosition);
+	vec3 worldSunVector = mat3(gbufferModelViewInverse) * sunVec;
+  vec3 moonVec = normalize(moonPosition);
+	vec3 worldMoonVector = mat3(gbufferModelViewInverse) * moonVec;
+
+  // Inside main() or a lighting function
+  float sunIntensity = getLightContribution(worldSunVector);
+  float moonIntensity = getLightContribution(worldMoonVector);
+
+  // Example colors (Warm Sun, Cold Moon)
+  vec3 sunlightContribution = mix(sunlightScatterColor, sunlightColor, smoothstep(0.0, 0.3, worldSunVector.y)) * sunIntensity;
+  vec3 moonlightContribution = moonlightColor * moonIntensity;
+
+  float moonLightFactor = 0.05;
+  float sunLightFactor = 1.0;
+  return  (sunlightContribution * shadow)*sunLightFactor + (moonlightContribution * shadow)*moonLightFactor;
+}
+
 void main() {
 	
 	color = texture(colortex0, texcoord);
@@ -121,10 +155,7 @@ void main() {
 	vec3 blocklight = lightmap.r * blocklightColor;
 	vec3 skylight = lightmap.g * skylightColor;
 	vec3 ambient = ambientColor;
-	
 
-	vec3 lightVector = normalize(shadowLightPosition);
-	vec3 worldLightVector = mat3(gbufferModelViewInverse) * lightVector;
 	
 	vec3 NDCPos = vec3(texcoord.xy, depth) * 2.0 - 1.0;
 	vec3 viewPos = projectAndDivide(gbufferProjectionInverse, NDCPos);
@@ -133,8 +164,8 @@ void main() {
 	vec4 shadowClipPos = shadowProjection * vec4(shadowViewPos, 1.0);
 
 	vec3 shadow = getSoftShadow(shadowClipPos);
-	vec3 sunlight = sunlightColor * clamp(dot(worldLightVector, normal), 0.0, 1.0) * shadow;
+	vec3 sunlight = getCelestialLight(normal, shadow);
 
-	color.rgb *= blocklight + skylight + ambient + sunlight;
+	color.rgb *= blocklight + (sunlight)*skylight;
 
 }
