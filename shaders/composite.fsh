@@ -7,6 +7,7 @@ uniform sampler2D colortex1;
 uniform sampler2D colortex2;
 
 uniform sampler2D depthtex0;
+uniform sampler2D depthtex1;
 
 uniform sampler2D shadowtex0;
 uniform sampler2D shadowtex1;
@@ -140,11 +141,21 @@ vec3 getCelestialLight(vec3 normal, vec3 shadow) {
   return  (sunlightContribution * shadow)*sunLightFactor + (moonlightContribution * shadow)*moonLightFactor;
 }
 
+uniform float near; // near viewing plane distance                   
+uniform float far; // far viewing plane distance
+
+float linearizeDepth(float depth) {
+    float z = depth * 2.0 - 1.0; // convert to NDC
+    return (2.0 * near * far) / (far + near - z * (far - near));
+}
+
 void main() {
 	
 	color = texture(colortex0, texcoord);
 	color.rgb = pow(color.rgb, vec3(2.2));
-	float depth = texture(depthtex0, texcoord).r;
+	float depth = texture(depthtex0, texcoord).r; 
+	float depth_underwater = texture(depthtex1, texcoord).r; // depth1 is the seabed (or whatever is behind the water)
+  float waterThickness = max(depth_underwater - depth, 0.0);
 	if (depth == 1.0) {
 		return;
 	}
@@ -168,4 +179,8 @@ void main() {
 
 	color.rgb *= blocklight + (sunlight)*skylight;
 
+  if (waterThickness > 0.000001) {
+    vec3 absorption = (1 - exp(-waterThickness * vec3(450.0, 500.0, 650.0)));
+    color.rgb *= absorption;
+  }
 }
