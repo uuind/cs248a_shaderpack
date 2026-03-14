@@ -38,8 +38,7 @@ const vec3 sunlightColor = vec3(1.0);
 const vec3 sunlightScatterColor = vec3(1.0, 0.4, 0.1);
 const vec3 moonlightColor = vec3(1.0);
 const vec3 ambientColor = vec3(0.1);
-
-const float shadowDistanceRenderMul = 1.0;
+const vec3 waterDensity = vec3(0.1, 0.05, 0.02);
 
 
 vec3 getShadow(vec3 shadowScreenPos){
@@ -97,7 +96,7 @@ vec3 getSoftShadow(vec4 shadowClipPos){
   for(int x = -SHADOW_RANGE; x < SHADOW_RANGE; x++){
     for(int y = -SHADOW_RANGE; y < SHADOW_RANGE; y++){
       vec2 offset = vec2(x, y) * SHADOW_RADIUS / float(SHADOW_RANGE);
-	  offset = rotation * offset;
+	    offset = rotation * offset;
       offset /= shadowMapResolution; // offset in the rotated direction by the specified amount. We divide by the resolution so our offset is in terms of pixels
       vec4 offsetShadowClipPos = shadowClipPos + vec4(offset, 0.0, 0.0); // add offset
       offsetShadowClipPos.z -= 0.001; // apply bias
@@ -144,21 +143,17 @@ vec3 getCelestialLight(vec3 normal, vec3 shadow) {
 uniform float near; // near viewing plane distance                   
 uniform float far; // far viewing plane distance
 
-float linearizeDepth(float depth) {
-    float z = depth * 2.0 - 1.0; // convert to NDC
-    return (2.0 * near * far) / (far + near - z * (far - near));
-}
-
 void main() {
 	
 	color = texture(colortex0, texcoord);
 	color.rgb = pow(color.rgb, vec3(2.2));
-	float depth = texture(depthtex0, texcoord).r; 
-	float depth_underwater = texture(depthtex1, texcoord).r; // depth1 is the seabed (or whatever is behind the water)
-  float waterThickness = max(depth_underwater - depth, 0.0);
-	if (depth == 1.0) {
-		return;
-	}
+	float depth = texture(depthtex0, texcoord).r;
+
+  // If we are looking at the sky, stop shadow/light calculations immediately
+  if (depth == 1.0) {
+      return; 
+  }
+	
 	vec2 lightmap = texture(colortex1, texcoord).rg; // we only need the r and g components
 	vec3 encodedNormal = texture(colortex2, texcoord).rgb;
 	vec3 normal = normalize((encodedNormal - 0.5) * 2.0); // we normalize to make sure it is of unit length
@@ -179,8 +174,15 @@ void main() {
 
 	color.rgb *= blocklight + (sunlight)*skylight;
 
-  if (waterThickness > 0.000001) {
-    vec3 absorption = (1 - exp(-waterThickness * vec3(450.0, 500.0, 650.0)));
-    color.rgb *= absorption;
+  float depth_underwater = texture(depthtex1, texcoord).r; // depth1 is the seabed (or whatever is behind the water)
+  if(depth_underwater > depth) {
+    vec3 world_depth = projectAndDivide(gbufferProjectionInverse, vec3(texcoord, depth) * 2.0 - 1.0);
+    vec3 world_water_depth = projectAndDivide(gbufferProjectionInverse, vec3(texcoord, depth_underwater) * 2.0 - 1.0);
+    float waterThickness = length(world_water_depth - world_depth);
+    if (waterThickness > 0.000001) {
+      vec3 absorption = exp(waterThickness * -waterDensity);
+      color.rgb *= absorption;
+    }
   }
+
 }

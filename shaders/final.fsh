@@ -4,11 +4,6 @@ uniform sampler2D colortex0;
 
 in vec2 texcoord;
 
-/*
-const int colortex0Format = RGB16;
-*/
-
-/* RENDERTARGETS: 0 */
 layout(location = 0) out vec4 color;
 
 void main() {
