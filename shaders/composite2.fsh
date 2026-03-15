@@ -57,6 +57,38 @@ vec3 getReflection(vec3 viewPos, vec3 reflectDir) {
     return skyColor;
 }
 
+
+vec3 sampleRefraction(vec3 worldPos, vec3 viewDir, vec3 waterNormal) {
+    //  Transform world-space normal and compute refraction
+    vec3 perturbedNormal = normalize(mat3(gbufferModelView) * waterNormal);
+    vec3 refractDir = refract(viewDir, -perturbedNormal, 1.0 / 1.33);
+
+    // tiny offset to avoid hitting self
+    vec3 currentPos = viewDir;
+    float stepSize = 0.1;
+    vec3 refractionColor = skyColor;
+
+    for(int i = 0; i < 400; i++) {
+        currentPos += refractDir * stepSize;
+
+        vec4 projectPos = gbufferProjection * vec4(currentPos, 1.0);
+        vec3 screenPos = (projectPos.xyz / projectPos.w) * 0.5 + 0.5;
+        if(screenPos.x < 0.0 || screenPos.x > 1.0 || screenPos.y < 0.0 || screenPos.y > 1.0) break;
+
+        float rawDepth = texture(depthtex0, screenPos.xy).r;
+        if(rawDepth == 1.0) continue; // skip sky
+
+        vec3 sceneViewPos = projectAndDivide(gbufferProjectionInverse, vec3(screenPos.xy, rawDepth) * 2.0 - 1.0);
+        if(currentPos.z < sceneViewPos.z) {
+            refractionColor = texture(colortex0, screenPos.xy).rgb; 
+            break;
+        }
+    }
+
+    return refractionColor;
+}
+
+
 void main() {
 	color = texture(colortex0, texcoord);
 	float depth = texture(depthtex0, texcoord).r;
@@ -79,6 +111,37 @@ void main() {
             vec3 absorption = exp(waterThickness * -waterDensity);
             color.rgb *= absorption;
         }
+        // underwater
+        if (isEyeInWater == 1) {
+            vec3 feetPlayerPos = (gbufferModelViewInverse * vec4(viewPos, 1.0)).xyz;
+            vec3 worldPos = feetPlayerPos + cameraPosition;
+            vec3 waterNormal = getWaterNormal(worldPos);
+            vec3 perturbedNormal = normalize(mat3(gbufferModelView) * waterNormal);
+
+            vec3 reflectionColor = getReflection(viewPos, reflect(viewDir, perturbedNormal));
+            vec3 refractionColor = sampleRefraction(worldPos, viewDir, waterNormal);
+
+            float cosTheta = clamp(dot(-viewDir, perturbedNormal), 0.0, 1.0);
+
+            float eta = 1.33;
+            float sinThetaT = eta * sqrt(max(0.0, 1.0 - cosTheta * cosTheta));
+
+            bool totalInternalReflection = sinThetaT > 1.0;
+
+            float fresnel = 0.02 + 0.98 * pow(1.0 - cosTheta, 5.0);
+            fresnel = clamp(fresnel, 0.02, 1.0);
+
+            if(totalInternalReflection){
+                fresnel = 0.3;
+            }
+
+            if(reflectionColor != vec3(0.0)) {
+                vec3 surfaceColor = mix(refractionColor, reflectionColor, fresnel);
+                color.rgb = surfaceColor;
+            }    
+        }
+
+        // above water
         if (isEyeInWater == 0) {
             vec3 feetPlayerPos = (gbufferModelViewInverse * vec4(viewPos, 1.0)).xyz;
             // Add the camera's world coordinates to get the absolute World Position
