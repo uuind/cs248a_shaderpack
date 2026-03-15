@@ -3,19 +3,8 @@
 #include /lib/util.glsl
 
 
-
-uniform sampler2D noisetex;
-
-uniform vec3 sunPosition;
-uniform vec3 moonPosition;
 uniform float sunAngle;
-uniform int worldTime;
 
-uniform int isEyeInWater;
-
-uniform vec3 cameraPosition;
-
-uniform mat4 gbufferModelView;
 
 uniform mat4 shadowModelView;
 uniform mat4 shadowProjection;
@@ -34,7 +23,7 @@ const vec3 sunlightColor = vec3(1.0);
 const vec3 sunlightScatterColor = vec3(1.0, 0.4, 0.1);
 const vec3 moonlightColor = vec3(1.0);
 const vec3 ambientColor = vec3(0.1);
-const vec3 waterDensity = vec3(0.1, 0.05, 0.02);
+
 
 
 
@@ -138,55 +127,10 @@ vec3 getCelestialLight(vec3 normal, vec3 shadow) {
   return  (sunlightContribution * shadow)*sunLightFactor + (moonlightContribution * shadow)*moonLightFactor;
 }
 
-vec3 getSpecular(vec3 normal, vec3 viewDir, vec3 sunDir) {
-    vec3 halfDir = normalize(sunDir - viewDir); // Blinn-Phong half-vector
-    float spec = pow(max(0.0, dot(normal, halfDir)), 128.0); // 128.0 = shininess
-    
-    // Use sunlight color and mask it by the sun's intensity (height)
-    float sunIntensity = smoothstep(0.0, 0.1, sunDir.y);
-    return sunlightColor * spec * sunIntensity;
-}
 
-vec3 getWaterNormal(vec3 worldPos) {
-    // 1. Static coordinates (Back to your preferred scales)
-    vec2 coord1 = worldPos.xz * 0.0005; 
-    vec2 coord2 = worldPos.xz * 0.0013; 
-    vec2 coord3 = worldPos.xz * 0.0023;
-    
-    // 2. Linear time for constant flowing movement
-    // Reduced from 0.1 to 0.04 to prevent the "too fast" feeling
-    float time = float(worldTime) * 0.0005; 
 
-    // 3. Offset the coordinates over time to create the "Flow"
-    // We use different directions for each layer to make it look organic
-    vec2 flow1 = vec2(time * 0.2, time * 0.1);
-    vec2 flow2 = vec2(time * -0.1, time * 0.2);
-    vec2 flow3 = vec2(time * 0.15, time * -0.15);
 
-    // 4. Sample and mix height values
-    float n1 = texture(noisetex, coord1 + flow1).r;
-    float n2 = texture(noisetex, coord2 + flow2).r;
-    float n3 = texture(noisetex, coord3).r; // Keep one layer static for grounding
-    
-    float combinedHeight = (n1 + n2 + n3) / 3.0;
 
-    // 5. Calculate slopes (Normals)
-    float delta = 0.001;
-    float hX = (texture(noisetex, coord1 + vec2(delta, 0.0) + flow1).r + 
-                texture(noisetex, coord2 + vec2(delta, 0.0) + flow2).r + 
-                texture(noisetex, coord3 + vec2(delta, 0.0)).r) / 3.0;
-
-    float hY = (texture(noisetex, coord1 + vec2(0.0, delta) + flow1).r + 
-                texture(noisetex, coord2 + vec2(0.0, delta) + flow2).r + 
-                texture(noisetex, coord3 + vec2(0.0, delta)).r) / 3.0;
-    
-    // Using your stabilizing 1.2 Y value
-    vec3 waveNormal = normalize(vec3(combinedHeight - hX, 1.2, combinedHeight - hY));
-    return waveNormal;
-}
-
-uniform float near; // near viewing plane distance                   
-uniform float far; // far viewing plane distance
 
 void main() {
 	
@@ -219,55 +163,4 @@ void main() {
 	vec3 sunlight = getCelestialLight(normal, shadow);
 
 	color.rgb *= blocklight + (sunlight)*skylight; // apply main light
-
-  
-
-  float depth_underwater = texture(depthtex1, texcoord).r; // depth1 is the seabed (or whatever is behind the water)
-  if(depth_underwater > depth) {
-    vec3 world_depth = projectAndDivide(gbufferProjectionInverse, vec3(texcoord, depth) * 2.0 - 1.0);
-    vec3 world_water_depth = projectAndDivide(gbufferProjectionInverse, vec3(texcoord, depth_underwater) * 2.0 - 1.0);
-    float waterThickness = length(world_water_depth - world_depth);
-    if (waterThickness > 0.000001) {
-      vec3 absorption = exp(waterThickness * -waterDensity);
-      color.rgb *= absorption;
-    }
-
-    vec3 feetPlayerPos = (gbufferModelViewInverse * vec4(viewPos, 1.0)).xyz;
-
-    // Add the camera's world coordinates to get the absolute World Position
-    vec3 worldPos = feetPlayerPos + cameraPosition;
-    vec3 waterNormal = getWaterNormal(worldPos);
-    
-    // 2. Transform the water normal from World Space to View Space
-    // This allows it to work with our viewDir and reflectDir
-    vec3 perturbedNormal = mat3(gbufferModelView) * waterNormal;
-    perturbedNormal = normalize(perturbedNormal);
-    // water reflection calculations
-    vec3 reflectDir = reflect(viewDir, perturbedNormal);
-    float lightCosTheta = dot(perturbedNormal, -viewDir);
-    float fresnel = 0.02 + 0.98 * pow(1.0 - clamp(lightCosTheta, 0.0, 1.0), 5.0);
-    vec3 reflectionColor = getReflection(viewPos, reflectDir);
-
-    if(reflectionColor != vec3(0.0)) {
-      color.rgb = mix(color.rgb, reflectionColor, fresnel);
-    }
-    vec3 sunDir = normalize(sunPosition);
-    vec3 specular = getSpecular(normal, -viewDir, sunDir);
-    color.rgb += specular * shadow;
-  }
-
-  if (isEyeInWater == 1) {
-    float viewDist = -viewPos.z;
-
-    float fog = 1.0 - exp(-viewDist * 0.045);
-
-    // reduce fog when looking up
-    float upFactor = clamp(viewDir.y * 0.5 + 0.5, 0.0, 1.0);
-    fog *= mix(1.0, 0.9, upFactor);
-
-    vec3 fog_color = pow(fogColor, vec3(2.2));
-    fog_color = mix(vec3(0.02, 0.08, 0.12), fog_color, 0.4);
-
-    color.rgb = mix(color.rgb, fog_color, fog);
-  }
 }

@@ -1,33 +1,39 @@
 #version 330 compatibility
 
-uniform sampler2D gtexture;
-uniform float alphaTestRef = 0.1;
-
-in vec2 lmcoord;
-in vec2 texcoord;
-in vec4 glcolor;
-in vec3 normal;
+#include /lib/distort.glsl
+#include /lib/util.glsl
 
 /* RENDERTARGETS: 0,1,2 */
-layout(location = 0) out vec4 color;
-layout(location = 1) out vec4 lightmapData;
-layout(location = 2) out vec4 encodedNormal;
+// Changed names to avoid conflict with the 'color' varying from Minecraft
+layout(location = 0) out vec4 outColor;
+layout(location = 1) out vec4 outLightmap;
+layout(location = 2) out vec4 outNormal;
+
+uniform sampler2D gtexture;
+
+in vec2 texcoord;
+in vec3 normal;
+in vec4 glcolor; // This is the vertex color from the CPU
+in vec4 viewPos;
+
 
 void main() {
-    // 1. Get the base texture and multiply by the biome tint (glcolor)
-    vec4 tex = texture(gtexture, texcoord);
-    color = tex * glcolor;
+    // 1. Get world position for the waves
+    vec3 playerPos = (gbufferModelViewInverse * viewPos).xyz;
+    vec3 worldPos = playerPos + cameraPosition;
 
-    // 2. Store the lightmap coordinates (needed for surface brightness)
-    lightmapData = vec4(lmcoord, 0.0, 1.0);
+    // 2. Calculate the perturbed normal
+    vec3 waterNormal = getWaterNormal(worldPos);
+    
+    // 3. Simple Alpha/Opacity logic
+    float alpha = 0.2; 
 
-    // 3. Encode the normals into a 0.0 to 1.0 range
-    // We use the player-space normal for path-traced reflections later
-    encodedNormal = vec4(normal * 0.5 + 0.5, 1.0);
+    // 4. Sample the base water texture (biome color)
+    // Use 'texture()' instead of 'texture2D()' for version 330
+    vec4 albedo = texture(gtexture, texcoord) * glcolor;
 
-    // 4. Alpha Testing
-    // Discard pixels that are too transparent (like water edge gaps)
-    if (color.a < alphaTestRef) {
-        discard;
-    }
+    // Output to the G-buffer using the layout locations defined above
+    outColor = vec4(albedo.rgb, alpha); 
+    outLightmap = vec4(0.0); 
+    outNormal = vec4(waterNormal * 0.5 + 0.5, 1.0); 
 }

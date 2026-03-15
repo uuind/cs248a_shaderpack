@@ -1,19 +1,9 @@
 #version 330 compatibility
 
-uniform sampler2D colortex0;
-uniform sampler2D depthtex0;
-
-uniform float far;
-uniform vec3 fogColor;
-
-uniform mat4 gbufferProjectionInverse;
+#include /lib/distort.glsl
+#include /lib/util.glsl
 
 in vec2 texcoord;
-
-vec3 projectAndDivide(mat4 projectionMatrix, vec3 position){
-  vec4 homPos = projectionMatrix * vec4(position, 1.0);
-  return homPos.xyz / homPos.w;
-}
 
 #define FOG_DENSITY 5.0
 
