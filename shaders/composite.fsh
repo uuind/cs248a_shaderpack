@@ -20,6 +20,8 @@ uniform vec3 moonPosition;
 uniform float sunAngle;
 uniform int worldTime;
 
+uniform int isEyeInWater;
+uniform vec3 fogColor;
 
 uniform mat4 shadowModelView;
 uniform mat4 shadowProjection;
@@ -185,4 +187,20 @@ void main() {
     }
   }
 
+  if (isEyeInWater == 1) {
+    vec3 viewPos = projectAndDivide(gbufferProjectionInverse, vec3(texcoord, depth) * 2.0 - 1.0);
+    float viewDist = -viewPos.z;
+
+    float fog = 1.0 - exp(-viewDist * 0.045);
+
+    // reduce fog when looking up
+    vec3 viewDir = normalize(viewPos);
+    float upFactor = clamp(viewDir.y * 0.5 + 0.5, 0.0, 1.0);
+    fog *= mix(1.0, 0.9, upFactor);
+
+    vec3 fog_color = pow(fogColor, vec3(2.2));
+    fog_color = mix(vec3(0.02, 0.08, 0.12), fog_color, 0.4);
+
+    color.rgb = mix(color.rgb, fog_color, fog);
+  }
 }
