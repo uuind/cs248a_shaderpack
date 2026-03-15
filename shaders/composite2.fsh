@@ -15,7 +15,7 @@ layout(location = 0) out vec4 color;
 vec3 getSpecular(vec3 normal, vec3 viewDir, vec3 sunDir) {
     vec3 halfDir = normalize(sunDir - viewDir); // Blinn-Phong half-vector
     float spec = pow(max(0.0, dot(normal, halfDir)), 128.0); // 128.0 = shininess
-    
+    float horizonMask = smoothstep(-0.05, 0.05, sunDir.y);
     // Use sunlight color and mask it by the sun's intensity (height)
     float sunIntensity = smoothstep(0.0, 0.1, sunDir.y);
     return sunlightColor * spec * sunIntensity;
@@ -94,12 +94,12 @@ void main() {
             float fresnel = 0.02 + 0.98 * pow(1.0 - clamp(lightCosTheta, 0.0, 1.0), 5.0);
             vec3 reflectionColor = getReflection(viewPos, reflectDir);
 
-        if(reflectionColor != vec3(0.0)) {
-            color.rgb = mix(color.rgb, reflectionColor, fresnel);
-        }
-        vec3 sunDir = normalize(sunPosition);
-        vec3 specular = getSpecular(normal, viewDir, sunDir);
-        color.rgb += specular;
+            if(reflectionColor != vec3(0.0)) {
+                color.rgb = mix(color.rgb, reflectionColor, fresnel);
+            }
+            vec3 sunDir = normalize(sunPosition);
+            vec3 specular = getSpecular(perturbedNormal, viewDir, sunDir);
+            color.rgb += specular;
         }
     
     }
@@ -118,4 +118,5 @@ void main() {
 
         color.rgb = mix(color.rgb, fog_color, fog);
     } 
+    
 }

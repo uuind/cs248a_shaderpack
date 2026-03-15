@@ -26,7 +26,7 @@ void main() {
     vec3 waterNormal = getWaterNormal(worldPos);
     
     // 3. Simple Alpha/Opacity logic
-    float alpha = 0.2; 
+    float alpha = 0.4; 
 
     // 4. Sample the base water texture (biome color)
     // Use 'texture()' instead of 'texture2D()' for version 330
