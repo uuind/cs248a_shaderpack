@@ -19,12 +19,12 @@ layout(location = 0) out vec4 color;
 
 const vec3 blocklightColor = vec3(1.0, 0.5, 0.125);
 const vec3 skylightColor = vec3(1.0);
-const vec3 sunlightColor = vec3(1.0);
+const vec3 sunlightColor = vec3(1.0, 1.0, 0.8);
 const vec3 sunlightScatterColor = vec3(1.0, 0.4, 0.1);
 const vec3 moonlightColor = vec3(1.0);
 const vec3 ambientColor = vec3(0.1);
 
-
+const float shadowDistance = 160.0;
 
 
 
@@ -87,6 +87,7 @@ vec3 getSoftShadow(vec4 shadowClipPos){
       offset /= shadowMapResolution; // offset in the rotated direction by the specified amount. We divide by the resolution so our offset is in terms of pixels
       vec4 offsetShadowClipPos = shadowClipPos + vec4(offset, 0.0, 0.0); // add offset
       offsetShadowClipPos.z -= 0.001; // apply bias
+            
       offsetShadowClipPos.xyz = distortShadowClipPos(offsetShadowClipPos.xyz); // apply distortion
       vec3 shadowNDCPos = offsetShadowClipPos.xyz / offsetShadowClipPos.w; // convert to NDC space
       vec3 shadowScreenPos = shadowNDCPos * 0.5 + 0.5; // convert to screen space

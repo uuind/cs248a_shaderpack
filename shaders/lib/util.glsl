@@ -78,7 +78,7 @@ vec3 getWaterNormal(vec3 worldPos) {
     float combinedHeight = (n1 + n2 + n3) / 3.0;
 
     // 5. Calculate slopes (Normals)
-    float delta = 0.001;
+    float delta = 0.0001;
     float hX = (texture(noisetex, coord1 + vec2(delta, 0.0) + flow1).r + 
                 texture(noisetex, coord2 + vec2(delta, 0.0) + flow2).r + 
                 texture(noisetex, coord3 + vec2(delta, 0.0)).r) / 3.0;
