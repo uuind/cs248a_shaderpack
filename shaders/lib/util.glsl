@@ -91,3 +91,15 @@ vec3 getWaterNormal(vec3 worldPos) {
     vec3 waveNormal = normalize(vec3(combinedHeight - hX, 1.2, combinedHeight - hY));
     return waveNormal;
 }
+
+uint pcg_hash(uint v) {
+    uint state = v * 747796405u + 28913327u;
+    uint word = ((state >> ((state >> 28u) + 4u)) ^ state) * 277803737u;
+    return (word >> 22u) ^ word;
+}
+
+// Helper to get a float between 0.0 and 1.0
+float rand(inout uint seed) {
+    seed = pcg_hash(seed);
+    return float(seed) * (1.0 / 4294967296.0);
+}

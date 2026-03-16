@@ -6,8 +6,14 @@
 in vec2 texcoord;
 uniform int isEyeInWater;
 
+#define ETA_AIR 1.0
+#define ETA_WATER 1.33
+
 const vec3 waterDensity = vec3(0.1, 0.05, 0.02);
 const vec3 sunlightColor = vec3(1.0);
+
+uniform int viewWidth;
+uniform int viewHeight;
 
 /* RENDERTARGETS: 0 */
 layout(location = 0) out vec4 color;
@@ -22,72 +28,50 @@ vec3 getSpecular(vec3 normal, vec3 viewDir, vec3 sunDir) {
 }
 
 
-vec3 getReflection(vec3 viewPos, vec3 reflectDir) {
-    // Offset the start: Nudge the ray away from the water surface
-    // to prevent it from hitting the pixel it just left.
-    vec3 currentPos = viewPos + reflectDir * 0.5; 
-    float stepSize = 0.1; 
-    for(int i = 0; i < 400; i++) {
-        currentPos += reflectDir * stepSize;
+vec3 sampleCaustics(vec3 viewPos, vec3 awayDir, bool isReflection) {
+    // 1. Nudge the ray to prevent self-intersection
+    vec3 currentPos = viewPos + awayDir * 0.4; 
+    
+    // 2. Adjust step size for performance vs. quality
+    // Increasing this will help you get back to 144 FPS
+    float stepSize = 0.8; 
+    int maxSteps = 400; // Significantly reduced from 400 for efficiency
 
-        // Project the ray's 3D position to 2D Screen Space
+    for(int i = 0; i < maxSteps; i++) {
+        currentPos += awayDir * stepSize;
+
+        // 3. Project to Screen Space
         vec4 projectPos = gbufferProjection * vec4(currentPos, 1.0);
+        
+        // Critical: Perspective divide happens once per step
         vec3 screenPos = (projectPos.xyz / projectPos.w) * 0.5 + 0.5;
 
-        // Boundary check: If the ray leaves the screen, stop
+        // 4. Boundary check
         if(screenPos.x < 0.0 || screenPos.x > 1.0 || screenPos.y < 0.0 || screenPos.y > 1.0) break;
 
-        // Sample the OPAQUE depth (seabed/terrain)
+        // 5. Comparison using Linear View-Space Z
         float rawDepth = texture(depthtex1, screenPos.xy).r;
-        if (rawDepth == 1.0) continue; // Skip the sky
+        if (rawDepth == 1.0) break; // Hit the sky, stop marching
 
-        // Convert raw depth to Linear View Space Z (meters)
+        // Reconstruct the scene depth at this specific pixel
         vec3 sceneViewPos = projectAndDivide(gbufferProjectionInverse, vec3(screenPos.xy, rawDepth) * 2.0 - 1.0);
 
-        // Comparison: In OpenGL, Z is negative (0 is camera, -100 is far)
-        // A hit occurs if the ray's Z is 'further' (smaller) than the scene Z
+        // In View Space, Z is negative. A 'hit' is when the ray is further (more negative) than the scene
         if(currentPos.z < sceneViewPos.z) {
-            // Check thickness to avoid reflecting through walls
-            if(abs(currentPos.z - sceneViewPos.z) < 1.0) {
+            // Thickness check to prevent rays from 'bleeding' through thin walls
+            if(abs(currentPos.z - sceneViewPos.z) < 2.0) {
                 return texture(colortex0, screenPos.xy).rgb;
             }
         }
     }
-    // Fallback: If no blocks hit, reflect the sky
-    return skyColor;
-}
-
-
-vec3 sampleRefraction(vec3 worldPos, vec3 viewDir, vec3 waterNormal) {
-    //  Transform world-space normal and compute refraction
-    vec3 perturbedNormal = normalize(mat3(gbufferModelView) * waterNormal);
-    vec3 refractDir = refract(viewDir, -perturbedNormal, 1.0 / 1.33);
-
-    // tiny offset to avoid hitting self
-    vec3 currentPos = viewDir;
-    float stepSize = 0.1;
-    vec3 refractionColor = skyColor;
-
-    for(int i = 0; i < 400; i++) {
-        currentPos += refractDir * stepSize;
-
-        vec4 projectPos = gbufferProjection * vec4(currentPos, 1.0);
-        vec3 screenPos = (projectPos.xyz / projectPos.w) * 0.5 + 0.5;
-        if(screenPos.x < 0.0 || screenPos.x > 1.0 || screenPos.y < 0.0 || screenPos.y > 1.0) break;
-
-        float rawDepth = texture(depthtex0, screenPos.xy).r;
-        if(rawDepth == 1.0) continue; // skip sky
-
-        vec3 sceneViewPos = projectAndDivide(gbufferProjectionInverse, vec3(screenPos.xy, rawDepth) * 2.0 - 1.0);
-        if(currentPos.z < sceneViewPos.z) {
-            refractionColor = texture(colortex0, screenPos.xy).rgb; 
-            break;
-        }
+    if(isReflection) {
+        // For reflections, if we miss, we can return the sky color for a more natural look
+        return skyColor;
+    } else {
+        // For refractions, if we miss, we return black (or you could choose a subtle tint)
+        return vec3(0.0);
     }
-
-    return refractionColor;
 }
-
 
 void main() {
 	color = texture(colortex0, texcoord);
@@ -112,59 +96,55 @@ void main() {
             color.rgb *= absorption;
         }
         // underwater
-        if (isEyeInWater == 1) {
-            vec3 feetPlayerPos = (gbufferModelViewInverse * vec4(viewPos, 1.0)).xyz;
-            vec3 worldPos = feetPlayerPos + cameraPosition;
-            vec3 waterNormal = getWaterNormal(worldPos);
-            vec3 perturbedNormal = normalize(mat3(gbufferModelView) * waterNormal);
-
-            vec3 reflectionColor = getReflection(viewPos, reflect(viewDir, perturbedNormal));
-            vec3 refractionColor = sampleRefraction(worldPos, viewDir, waterNormal);
-
-            float cosTheta = clamp(dot(-viewDir, perturbedNormal), 0.0, 1.0);
-
-            float eta = 1.33;
-            float sinThetaT = eta * sqrt(max(0.0, 1.0 - cosTheta * cosTheta));
-
-            bool totalInternalReflection = sinThetaT > 1.0;
-
-            float fresnel = 0.02 + 0.98 * pow(1.0 - cosTheta, 5.0);
-            fresnel = clamp(fresnel, 0.02, 1.0);
-
-            if(totalInternalReflection){
-                fresnel = 0.3;
-            }
-
-            if(reflectionColor != vec3(0.0)) {
-                vec3 surfaceColor = mix(refractionColor, reflectionColor, fresnel);
-                color.rgb = surfaceColor;
-            }    
+        vec3 feetPlayerPos = (gbufferModelViewInverse * vec4(viewPos, 1.0)).xyz;
+        vec3 worldPos = feetPlayerPos + cameraPosition;
+        vec3 waterNormal = getWaterNormal(worldPos);
+        vec3 perturbedNormal = normalize(mat3(gbufferModelView) * waterNormal);
+        
+        float eta;
+        if(isEyeInWater == 1) {
+            eta = ETA_AIR / ETA_WATER;
+        } else {
+            eta = ETA_WATER / ETA_AIR;
         }
 
-        // above water
-        if (isEyeInWater == 0) {
-            vec3 feetPlayerPos = (gbufferModelViewInverse * vec4(viewPos, 1.0)).xyz;
-            // Add the camera's world coordinates to get the absolute World Position
-            vec3 worldPos = feetPlayerPos + cameraPosition;
-            vec3 waterNormal = getWaterNormal(worldPos);
-            // Transform the water normal from World Space to View Space
-            // This allows it to work with our viewDir and reflectDir
-            vec3 perturbedNormal = mat3(gbufferModelView) * waterNormal;
-            perturbedNormal = normalize(perturbedNormal);
-            // water reflection calculations
-            vec3 reflectDir = reflect(viewDir, perturbedNormal);
-            float lightCosTheta = dot(perturbedNormal, -viewDir);
-            float fresnel = 0.02 + 0.98 * pow(1.0 - clamp(lightCosTheta, 0.0, 1.0), 5.0);
-            vec3 reflectionColor = getReflection(viewPos, reflectDir);
+        // gl_FragCoord.xy gives the actual pixel integer coordinates (e.g., 1920, 1080)
+        uint seed = uint(gl_FragCoord.x) * uint(viewWidth) + uint(gl_FragCoord.y) * uint(viewHeight);
 
-            if(reflectionColor != vec3(0.0)) {
-                color.rgb = mix(color.rgb, reflectionColor, fresnel);
-            }
+        // Combine pixel index with time to ensure it changes every frame
+        
+
+        
+        float cosTheta = clamp(dot(-viewDir, perturbedNormal), 0.0, 1.0);
+        
+        float sinThetaT = eta * sqrt(max(0.0, 1.0 - cosTheta * cosTheta));
+
+        bool totalInternalReflection = sinThetaT > 1.0;
+
+        float fresnel = 0.02 + 0.98 * pow(1.0 - cosTheta, 5.0);
+        fresnel = clamp(fresnel, 0.02, 1.0);
+        
+        vec3 reflectionColor = vec3(0.0);
+        vec3 refractionColor = vec3(0.0);
+        if(rand(seed) < fresnel) {
+            reflectionColor = sampleCaustics(viewPos, reflect(viewDir, perturbedNormal), true);
+        } else {
+            refractionColor = sampleCaustics(viewPos, refract(viewDir, perturbedNormal, eta), false);
+        }
+
+        if(dot(refractionColor, refractionColor) > 1e-6 && !totalInternalReflection) {
+            color.rgb = mix(color.rgb, refractionColor, 1.0 - fresnel);
+        }
+        if(dot(reflectionColor, reflectionColor) > 1e-6) {
+            color.rgb = mix(color.rgb, reflectionColor, fresnel);
+        }
+        
+        if (isEyeInWater == 0) {
             vec3 sunDir = normalize(sunPosition);
             vec3 specular = getSpecular(perturbedNormal, viewDir, sunDir);
             color.rgb += specular;
+            
         }
-    
     }
 
     if (isEyeInWater == 1) {
