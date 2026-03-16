@@ -1,14 +1,19 @@
 #version 330 compatibility
 
+in vec4 mc_Entity;
+
 out vec2 lmcoord;
 out vec2 texcoord;
 out vec4 glcolor;
 out vec3 normal;
 
+flat out float blockID;
+
 uniform mat4 gbufferModelViewInverse;
 
 void main() {
 	// Standard vertex transformation
+	blockID = mc_Entity.x;
 	gl_Position = ftransform();
 
 	// Pass texture coordinates for water foam/flowing textures
