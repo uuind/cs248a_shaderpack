@@ -17,6 +17,7 @@ in vec2 texcoord;
 /* RENDERTARGETS: 0 */
 layout(location = 0) out vec4 color;
 
+//custom light colors
 const vec3 blocklightColor = vec3(1.0, 0.5, 0.125);
 const vec3 skylightColor = vec3(1.0);
 const vec3 sunlightColor = vec3(1.0, 1.0, 0.8);
@@ -104,7 +105,7 @@ float getLightContribution(vec3 lightDir) {
     
     float height = lightDir.y;
     
-    // Smoothly transition as it nears the horizon
+    // Smoothly transition as it nears the horizon, similar to real life sun intensity
     // Using smoothstep prevents a sharp "pop" when the sun hits 0.0
     return smoothstep(0, 0.1, height);
 }
@@ -115,7 +116,6 @@ vec3 getCelestialLight(vec3 normal, vec3 shadow) {
   vec3 moonVec = normalize(moonPosition);
 	vec3 worldMoonVector = mat3(gbufferModelViewInverse) * moonVec;
 
-  // Inside main() or a lighting function
   float sunIntensity = getLightContribution(worldSunVector);
   float moonIntensity = getLightContribution(worldMoonVector);
 
@@ -123,13 +123,11 @@ vec3 getCelestialLight(vec3 normal, vec3 shadow) {
   vec3 sunlightContribution = mix(sunlightScatterColor, sunlightColor, smoothstep(0.0, 0.3, worldSunVector.y)) * sunIntensity;
   vec3 moonlightContribution = moonlightColor * moonIntensity;
 
-  float moonLightFactor = 0.05;
+  // sun is much more intense than moon
+  float moonLightFactor = 0.05; 
   float sunLightFactor = 1.0;
   return  (sunlightContribution * shadow)*sunLightFactor + (moonlightContribution * shadow)*moonLightFactor;
 }
-
-
-
 
 
 

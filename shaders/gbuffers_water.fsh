@@ -20,6 +20,8 @@ in vec2 lmcoord;
 flat in float blockID;
 
 
+
+
 void main() {
     vec3 playerPos = (gbufferModelViewInverse * viewPos).xyz;
     vec3 worldPos = playerPos + cameraPosition;
@@ -27,19 +29,14 @@ void main() {
     // Use the 330-style texture sampling
     vec4 texColor = texture(gtexture, texcoord);
     vec4 albedo = texColor * glcolor;
-
     
-
-    // Use '10000u' for uint comparison to avoid type mismatch
-    
-    outData = vec4(blockID/65535.0, 0.0, 0.0, 1.0);
-    if(abs(blockID - 10000.0) < 50.0) {
+    outData = vec4(blockID/BLOCK_ID_RANGE, 0.0, 0.0, 1.0);
+    if(abs(blockID - 1.0) < 1.0) {
         // Water Logic
         vec3 waterNormal = getWaterNormal(worldPos);
-        outColor = vec4(albedo.rgb, 0.4); // 0.4 is your alpha
+        outColor = vec4(albedo.rgb, 0.4); // opacity of 0.4
         outLightmap = vec4(0.0);
-        outNormal = vec4(waterNormal * 0.5 + 0.5, 1.0); 
-        
+        outNormal = vec4(waterNormal * 0.5 + 0.5, 1.0);
     } else {
         // Glass/Other Translucent Logic
         // Use texColor directly to avoid double-multiplying by glcolor if not needed

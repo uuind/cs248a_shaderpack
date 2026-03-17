@@ -34,24 +34,22 @@ vec3 sampleReflection(vec3 viewPos, vec3 awayDir, bool underwater, float waterSu
     // 1. Nudge the ray to prevent self-intersection
     vec3 currentPos = viewPos + awayDir * 0.4; 
     
-    // 2. Adjust step size for performance vs. quality
-    // Increasing this will help you get back to 144 FPS
     float stepSize = 0.5; 
-    int maxSteps = 600; // Significantly reduced from 400 for efficiency
+    int maxSteps = 400; // Modify for reflection sample distance vs. performance
 
     for(int i = 0; i < maxSteps; i++) {
         currentPos += awayDir * stepSize;
 
-        // 3. Project to Screen Space
+        // Project to Screen Space
         vec4 projectPos = gbufferProjection * vec4(currentPos, 1.0);
         
         // Critical: Perspective divide happens once per step
         vec3 screenPos = (projectPos.xyz / projectPos.w) * 0.5 + 0.5;
 
-        // 4. Boundary check
+        // Boundary check
         if(screenPos.x < 0.0 || screenPos.x > 1.0 || screenPos.y < 0.0 || screenPos.y > 1.0) break;
 
-        // 5. Comparison using Linear View-Space Z
+        // Comparison using Linear View-Space Z
         float rawDepth = texture(depthtex1, screenPos.xy).r;
         if (rawDepth == 1.0) break; // Hit the sky, stop marching
 
@@ -81,11 +79,10 @@ void main() {
     vec3 NDCPos = vec3(texcoord.xy, depth) * 2.0 - 1.0;
 	vec3 viewPos = projectAndDivide(gbufferProjectionInverse, NDCPos);
     vec3 viewDir = normalize(viewPos);
-    float blockID = texture(colortex3, texcoord).r * 65535.0;
+    float blockID = texture(colortex3, texcoord).r * BLOCK_ID_RANGE;
     float depth_underwater = texture(depthtex1, texcoord).r; // depth1 is the seabed (or whatever is behind the water)
-    if(abs(blockID - 10000.0) < 50.0) {
+    if(abs(blockID - 1.0) < 1.0) {
         if(depth_underwater > depth) {
-
             vec3 waterSurfaceViewPos = viewPos; 
             vec3 waterSurfaceWorldPos = (gbufferModelViewInverse * vec4(waterSurfaceViewPos, 1.0)).xyz + cameraPosition;
             float waterY = waterSurfaceWorldPos.y;
@@ -112,9 +109,9 @@ void main() {
             float sinThetaT = eta * sqrt(max(0.0, 1.0 - cosTheta * cosTheta));
 
             bool totalInternalReflection = sinThetaT > 1.0;
-
-            float fresnel = 0.02 + 0.98 * pow(1.0 - cosTheta, 5.0);
-            fresnel = clamp(fresnel, 0.02, 1.0);
+            float R0 = pow((ETA_AIR - ETA_WATER) / (ETA_AIR + ETA_WATER), 2);
+            float fresnel = R0 + (1-R0) * pow(1.0 - cosTheta, 5.0);
+            fresnel = clamp(fresnel, R0, 1.0);
             
             vec3 reflectionColor = vec3(0.0);
             

@@ -31,6 +31,8 @@ uniform float far; // far viewing plane distance
 
 const float PI = 3.1415926535;
 
+#define BLOCK_ID_RANGE 256.0
+
 vec3 projectAndDivide(mat4 projectionMatrix, vec3 position){
   vec4 homPos = projectionMatrix * vec4(position, 1.0);
   return homPos.xyz / homPos.w;
@@ -55,29 +57,27 @@ vec3 screenToPlayerSpace(vec2 uv, float depth) {
 
 
 vec3 getWaterNormal(vec3 worldPos) {
-    // 1. Static coordinates (Back to your preferred scales)
+    // Static coordinates
     vec2 coord1 = worldPos.xz * 0.0005; 
     vec2 coord2 = worldPos.xz * 0.0013; 
     vec2 coord3 = worldPos.xz * 0.0023;
     
-    // 2. Linear time for constant flowing movement
-    // Reduced from 0.1 to 0.04 to prevent the "too fast" feeling
+    // Linear time for constant flowing movement (change over time)
     float time = float(worldTime) * 0.0005; 
 
-    // 3. Offset the coordinates over time to create the "Flow"
-    // We use different directions for each layer to make it look organic
+    // Offset the coordinates over time to create the "Flow"
     vec2 flow1 = vec2(time * 0.2, time * 0.1);
     vec2 flow2 = vec2(time * -0.1, time * 0.2);
     vec2 flow3 = vec2(time * 0.15, time * -0.15);
 
-    // 4. Sample and mix height values
+    // Sample and mix height values
     float n1 = texture(noisetex, coord1 + flow1).r;
     float n2 = texture(noisetex, coord2 + flow2).r;
     float n3 = texture(noisetex, coord3).r; // Keep one layer static for grounding
     
     float combinedHeight = (n1 + n2 + n3) / 3.0;
 
-    // 5. Calculate slopes (Normals)
+    // Calculate normals
     float delta = 0.0001;
     float hX = (texture(noisetex, coord1 + vec2(delta, 0.0) + flow1).r + 
                 texture(noisetex, coord2 + vec2(delta, 0.0) + flow2).r + 
@@ -87,19 +87,6 @@ vec3 getWaterNormal(vec3 worldPos) {
                 texture(noisetex, coord2 + vec2(0.0, delta) + flow2).r + 
                 texture(noisetex, coord3 + vec2(0.0, delta)).r) / 3.0;
     
-    // Using your stabilizing 1.2 Y value
     vec3 waveNormal = normalize(vec3(combinedHeight - hX, 1.2, combinedHeight - hY));
     return waveNormal;
-}
-
-uint pcg_hash(uint v) {
-    uint state = v * 747796405u + 28913327u;
-    uint word = ((state >> ((state >> 28u) + 4u)) ^ state) * 277803737u;
-    return (word >> 22u) ^ word;
-}
-
-// Helper to get a float between 0.0 and 1.0
-float rand(inout uint seed) {
-    seed = pcg_hash(seed);
-    return float(seed) * (1.0 / 4294967296.0);
 }

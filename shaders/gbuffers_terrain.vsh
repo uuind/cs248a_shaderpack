@@ -20,7 +20,7 @@ void main() {
 
     vec4 viewPos = gl_ModelViewMatrix * gl_Vertex;
 
-    if(abs(blockID - 30000.0) < 50.0) { // grass
+    if(abs(blockID - 3.0) < 1.0) { // grass
 
         vec4 worldPos = gbufferModelViewInverse * viewPos;
         float heightFactor = smoothstep(0.1, 1.0, 1.0 - texcoord.y);
@@ -32,7 +32,7 @@ void main() {
         viewPos.x += displacementX * heightFactor;
         viewPos.z += displacementZ * heightFactor;
         gl_Position = gl_ProjectionMatrix * viewPos;
-    } else if (abs(blockID - 40000.0) < 50.0) { // leaves
+    } else if (abs(blockID - 4.0) < 1.0) { // leaves
         vec4 worldPos = gbufferModelViewInverse * viewPos;
         float speed = frameTimeCounter * 2.0; 
         float shakeX = sin(speed + (worldPos.x + worldPos.y + worldPos.z) * 2.0) * 0.02;
